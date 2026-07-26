@@ -16,12 +16,13 @@ client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
 });
 
+isClientReady = false;
 // Authentication events
 client.on('authenticated', () => console.log('✅ WhatsApp authenticated successfully.'));
 client.on('auth_failure', msg => console.error('❌ WhatsApp authentication failure:', msg));
 
 // Ready event
-client.on('ready', () => console.log('🚀 WhatsApp client is ready!'));
+client.on('ready', () => { isClientReady = true; console.log('🚀 WhatsApp client is ready!') });
 
 // Disconnection event
 client.on('disconnected', reason => console.warn('⚠️ WhatsApp client disconnected:', reason));
@@ -63,7 +64,11 @@ function getAckName(ack) {
 client.initialize();
 
 // Health check
-app.get('/', (req, res) => res.send('Server is running'));
+app.get('/', (req, res) =>  {    
+    const msg = `Server is running ${this.isClientReady ? '✅' : '❌'} and WhatsApp client is ${isClientReady ? 'ready' : 'not ready'}.`;
+    res.send(msg);
+});
+
 app.post('/send-message-test', async (req, res) => {
     const { phone, message } = req.body;
 
@@ -128,12 +133,40 @@ app.post('/send-message', async (req, res) => {
         const response = await client.sendMessage(numberDetails, message);
         console.log('📤 Full send response:', response);
 
+
+ // Wait for ACK event for this message
+        const ackResult = await new Promise((resolve) => {
+            const handler = (msg, ack) => {
+                console.log('======================================');
+               console.log('message_ack event received:', msg);
+               console.log('message_ack event received:', ack);
+               console.log('======================================');
+                    client.off('message_ack', handler); // remove listener after match
+                    resolve({
+                        ack,
+                        ackName: getAckName(ack),
+                        id: msg.id._serialized,
+                        from: msg.from,
+                        to: msg.to,
+                        body: msg.body,
+                        sendFailure: msg?._data?.isSendFailure
+                    });
+                
+            };
+            client.on('message_ack', handler);
+        });
+
         res.json({
             success: true,
-            numberDetails,
-            messageId: response?.id?._serialized || null,
-            rawResponse: response
+            ackResult
         });
+
+        // res.json({
+        //     success: true,
+        //     numberDetails,
+        //     messageId: response?.id?._serialized || null,
+        //     rawResponse: response
+        // });
     } catch (err) {
         console.error('❌ Send error:', err);
         res.status(500).json({ error: err.message });
