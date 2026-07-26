@@ -83,45 +83,8 @@ app.get('/', (req, res) => {
     res.send(msg);
 });
 
-
-
-app.post('/send-message-test', async (req, res) => {
-    const { phone, message } = req.body;
-
-    if (!phone || !message) {
-        return res.status(400).json({ error: 'Phone and message required' });
-    }
-
-    try {
-
-        const numberDetails =  `${phone}@c.us`; //await client.getNumberId(phone);
-
-        if (!numberDetails) {
-            return res.status(404).json({ error: 'Number not registered on WhatsApp' });
-        }
-
-        if (!numberDetails._serialized.endsWith('@c.us')) {
-            return res.status(400).json({ error: `Cannot send to ${numberDetails._serialized}` });
-        }
-
-        const response = await client.sendMessage(numberDetails._serialized, message);
-        console.log('📤 Full send response:', response);
-
-        res.json({
-            success: true,
-            numberDetails: numberDetails._serialized,
-            messageId: response?.id?._serialized || null,
-            rawResponse: response
-        });
-    } catch (err) {
-        console.error('❌ Send error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-
-// Send message endpoint
-app.post('/send-message', async (req, res) => {
+ app.post('/send-message', async (req, res) => {
+  console.clear();
     const { phone, message } = req.body;
 
     console.log('➡️ API Request:', { phone, message });
@@ -132,32 +95,19 @@ app.post('/send-message', async (req, res) => {
     }
 
     try {
-        console.log('🔍 Checking WhatsApp registration for:', phone);
-        const numberDetails = `${phone}@c.us`;
-        console.log('📋 Number details:', numberDetails);
+        // Build the chat ID manually
+        const chatId = `${phone}@c.us`;
+        console.log('📋 Chat ID:', chatId);
 
-        if (!numberDetails) {
-            console.error('❌ Number not registered on WhatsApp');
-            return res.status(404).json({ error: 'Number not registered on WhatsApp' });
-        }
-
-        if (!numberDetails.endsWith('@c.us')) {
-            console.error('❌ Invalid target:', numberDetails._serialized);
-            return res.status(400).json({ error: `Cannot send to ${numberDetails._serialized}` });
-        }
- 
-        const response = await client.sendMessage(numberDetails, message);
+        // Send the message
+        const response = await client.sendMessage(chatId, message);
         console.log('📤 Full send response:', response);
 
-
- // Wait for ACK event for this message
+        // Wait for ACK only for THIS message ID
         const ackResult = await new Promise((resolve) => {
-            const handler = (msg, ack) => {
-                console.log('======================================');
-               console.log('message_ack event received:', msg);
-               console.log('message_ack event received:', ack);
-               console.log('======================================');
-                    client.off('message_ack', handler); // remove listener after match
+            const handler = (msg, ack) => {               
+                if ('SERVER_ACK' === getAckName(ack)) {
+                    client.off('message_ack', handler); // remove listener only for this message
                     resolve({
                         ack,
                         ackName: getAckName(ack),
@@ -167,7 +117,7 @@ app.post('/send-message', async (req, res) => {
                         body: msg.body,
                         sendFailure: msg?._data?.isSendFailure
                     });
-                
+                }
             };
             client.on('message_ack', handler);
         });
@@ -176,13 +126,6 @@ app.post('/send-message', async (req, res) => {
             success: true,
             ackResult
         });
-
-        // res.json({
-        //     success: true,
-        //     numberDetails,
-        //     messageId: response?.id?._serialized || null,
-        //     rawResponse: response
-        // });
     } catch (err) {
         console.error('❌ Send error:', err);
         res.status(500).json({ error: err.message });
