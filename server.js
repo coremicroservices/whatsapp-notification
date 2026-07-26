@@ -1,13 +1,22 @@
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-
+const puppeteer = require('puppeteer');
 const app = express();
 app.use(express.json());
 
+// const client = new Client({
+//     authStrategy: new LocalAuth(),
+//     puppeteer: { headless: true }
+// });
+
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: { headless: true }
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    headless: true,
+    executablePath: puppeteer.executablePath(),
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  }
 });
 
 // QR code event
@@ -68,6 +77,13 @@ app.get('/', (req, res) =>  {
     const msg = `Server is running ${this.isClientReady ? '✅' : '❌'} and WhatsApp client is ${isClientReady ? 'ready' : 'not ready'}.`;
     res.send(msg);
 });
+
+app.get('/', (req, res) => {
+    const msg = `Server is running ✅ and WhatsApp client is ${isClientReady ? 'ready' : 'not ready'}.`;
+    res.send(msg);
+});
+
+
 
 app.post('/send-message-test', async (req, res) => {
     const { phone, message } = req.body;
