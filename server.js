@@ -64,6 +64,40 @@ client.initialize();
 
 // Health check
 app.get('/', (req, res) => res.send('Server is running'));
+app.post('/send-message-test', async (req, res) => {
+    const { phone, message } = req.body;
+
+    if (!phone || !message) {
+        return res.status(400).json({ error: 'Phone and message required' });
+    }
+
+    try {
+
+        const numberDetails =  `${phone}@c.us`; //await client.getNumberId(phone);
+
+        if (!numberDetails) {
+            return res.status(404).json({ error: 'Number not registered on WhatsApp' });
+        }
+
+        if (!numberDetails._serialized.endsWith('@c.us')) {
+            return res.status(400).json({ error: `Cannot send to ${numberDetails._serialized}` });
+        }
+
+        const response = await client.sendMessage(numberDetails._serialized, message);
+        console.log('📤 Full send response:', response);
+
+        res.json({
+            success: true,
+            numberDetails: numberDetails._serialized,
+            messageId: response?.id?._serialized || null,
+            rawResponse: response
+        });
+    } catch (err) {
+        console.error('❌ Send error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // Send message endpoint
 app.post('/send-message', async (req, res) => {
