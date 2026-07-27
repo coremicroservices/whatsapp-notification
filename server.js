@@ -70,13 +70,7 @@ function getAckName(ack) {
     return statuses[String(ack)] || 'UNKNOWN';
 }
 
-client.initialize();
-
-// Health check
-app.get('/', (req, res) =>  {    
-    const msg = `Server is running ${this.isClientReady ? '✅' : '❌'} and WhatsApp client is ${isClientReady ? 'ready' : 'not ready'}.`;
-    res.send(msg);
-});
+client.initialize().catch(err => console.error('❌ WhatsApp client initialization error:', err));
 
 app.get('/', (req, res) => {
     const msg = `Server is running ✅ and WhatsApp client is ${isClientReady ? 'ready' : 'not ready'}.`;
@@ -85,51 +79,61 @@ app.get('/', (req, res) => {
 
  app.post('/send-message', async (req, res) => {
   console.clear();
-    const { phone, message } = req.body;
+  const { phone, message } = req.body;
 
-    console.log('➡️ API Request:', { phone, message });
+  console.log('➡️ API Request:', { phone, message });
 
-    if (!phone || !message) {
-        console.error('❌ Missing phone or message');
-        return res.status(400).json({ error: 'Phone and message required' });
-    }
+  if (!phone || !message) {
+    console.error('❌ Missing phone or message');
+    return res.status(400).json({ error: 'Phone and message required' });
+  }
 
-    try {
-        // Build the chat ID manually
-        const chatId = `${phone}@c.us`;
-        console.log('📋 Chat ID:', chatId);
+  try {
+    // ✅ Check if number is registered
+    const numberDetails = await client.getNumberId(phone);
+    console.log('🔍 Number details:', numberDetails);
+     if (!numberDetails) {
+  return res.status(400).json({ error: 'Number not registered on WhatsApp' });
+}
 
-        // Send the message
-        const response = await client.sendMessage(chatId, message);
-        console.log('📤 Full send response:', response);
+if (!(numberDetails._serialized.endsWith('@c.us') || numberDetails._serialized.endsWith('@lid'))) {
+  return res.status(400).json({ error: 'Invalid WhatsApp number' });
+}
+    // Keep your existing chatId line intact
+    const chatId = `${phone}@c.us`;
+    console.log('📋 Chat ID:', chatId);
 
-        // Wait for ACK only for THIS message ID
-        const ackResult = await new Promise((resolve) => {
-            const handler = (msg, ack) => {               
-                if ('SERVER_ACK' === getAckName(ack)) {
-                    client.off('message_ack', handler); // remove listener only for this message
-                    resolve({
-                        ack,
-                        ackName: getAckName(ack),
-                        id: msg.id._serialized,
-                        from: msg.from,
-                        to: msg.to,
-                        body: msg.body,
-                        sendFailure: msg?._data?.isSendFailure
-                    });
-                }
-            };
-            client.on('message_ack', handler);
-        });
+    // Send the message
+    const response = await client.sendMessage(chatId, message);
+    console.log('📤 Full send response:', response);
 
-        res.json({
-            success: true,
-            ackResult
-        });
-    } catch (err) {
-        console.error('❌ Send error:', err);
-        res.status(500).json({ error: err.message });
-    }
+    // Wait for ACK only for THIS message ID
+    const ackResult = await new Promise((resolve) => {
+      const handler = (msg, ack) => {
+        if ('SERVER_ACK' === getAckName(ack)) {
+          client.off('message_ack', handler);
+          resolve({
+            ack,
+            ackName: getAckName(ack),
+            id: msg.id._serialized,
+            from: msg.from,
+            to: msg.to,
+            body: msg.body,
+            sendFailure: msg?._data?.isSendFailure
+          });
+        }
+      };
+      client.on('message_ack', handler);
+    });
+
+    res.json({
+      success: true,
+      ackResult
+    });
+  } catch (err) {
+    console.error('❌ Send error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
